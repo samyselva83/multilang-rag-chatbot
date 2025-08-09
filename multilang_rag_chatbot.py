@@ -3,7 +3,8 @@ from langchain_groq import ChatGroq
 from langchain.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
+#from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
 import os
 import datetime
@@ -41,7 +42,12 @@ if st.button("Submit Query"):
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = splitter.split_documents(docs)
 
-        embeddings = OpenAIEmbeddings()
+        #embeddings = OpenAIEmbeddings()
+        # Initialize embeddings correctly
+        embeddings = OpenAIEmbeddings(
+        model="text-embedding-3-small",   # or "text-embedding-3-large"
+        api_key=os.getenv("GROQ_API_KEY")  # Ensure your key is set in environment
+        )
         vectorstore = FAISS.from_documents(chunks, embeddings)
 
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
@@ -58,3 +64,4 @@ if st.button("Submit Query"):
 
         # Show result
         st.success(response)
+
