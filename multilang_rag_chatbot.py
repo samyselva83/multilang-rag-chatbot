@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain_community.chat_models import ChatGroq
+from langchain_groq import ChatGroq
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -83,3 +83,4 @@ if uploaded_file:
             st.warning("Please enter a question.")
 else:
     st.info("Upload a PDF to start.")
+
