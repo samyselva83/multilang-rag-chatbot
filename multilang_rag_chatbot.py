@@ -1,67 +1,78 @@
+import os
 import streamlit as st
-from langchain_groq import ChatGroq
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
-import os
-import datetime
+import tempfile
+import csv
+from datetime import datetime
 
-# ------------------ SETTINGS ------------------ #
-GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
+# Set Groq API key
+os.environ["GROQ_API_KEY"] = st.secrets["groq"]["GROQ_API_KEY"]
 
-# ------------------ STREAMLIT UI ------------------ #
-st.set_page_config(page_title="Multilang RAG Chatbot", layout="wide")
-st.title("🌍 Multilang RAG Chatbot")
+st.set_page_config(page_title="📄 Multilingual RAG Chatbot (Groq)")
+st.title("📄 Multilingual RAG Chatbot with Groq")
 
-# User info inputs
-user_name = st.text_input("Enter your Name")
-user_email = st.text_input("Enter your Email")
+# Sidebar user info
+st.sidebar.header("🔐 User Login")
+user_name = st.sidebar.text_input("Your Name")
+user_email = st.sidebar.text_input("Email")
+
+if not user_name or not user_email:
+    st.warning("Please enter your name and email.")
+    st.stop()
 
 # File upload
-uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+uploaded_file = st.file_uploader("📎 Upload PDF", type=["pdf"])
 
-# Query input
-query = st.text_area("Ask your question")
+if uploaded_file:
+    upload_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_name = uploaded_file.name
 
-if st.button("Submit Query"):
-    if not uploaded_file:
-        st.error("Please upload a PDF file first.")
-    elif not query.strip():
-        st.error("Please enter a query.")
-    else:
-        # ------------------ PDF PROCESSING ------------------ #
-        with open("temp.pdf", "wb") as f:
-            f.write(uploaded_file.read())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(uploaded_file.read())
+        pdf_path = tmp.name
 
-        loader = PyMuPDFLoader("temp.pdf")
-        docs = loader.load()
+    # Load and split
+    loader = PyMuPDFLoader(pdf_path)
+    documents = loader.load()
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = splitter.split_documents(documents)
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = splitter.split_documents(docs)
+    # Embeddings (free & local from HuggingFace)
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    db = FAISS.from_documents(chunks, embeddings)
 
-        # Use HuggingFace embeddings (no API key needed)
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-        vectorstore = FAISS.from_documents(chunks, embeddings)
+    # LLM (Groq)
+    llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
+    qa = RetrievalQA.from_chain_type(llm=llm, retriever=db.as_retriever())
 
-        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+    st.success(f"📄 {file_name} loaded. Ask your question!")
 
-        # Groq LLM for answering
-        llm = ChatGroq(groq_api_key=GROQ_API_KEY, model_name="llama-3.3-70b-versatile")
-        qa = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
-
+    query = st.text_input("💬 Ask your question (any language):")
+    if query:
         response = qa.run(query)
+        st.markdown(f"**Answer:** {response}")
 
-        # ------------------ LOGGING ------------------ #
-        log_entry = (
-            f"{datetime.datetime.now()} | Name: {user_name} | Email: {user_email} | "
-            f"File: {uploaded_file.name} | Query: {query} | Response: {response}\n"
-        )
-        with open("user_logs.txt", "a", encoding="utf-8") as log_file:
-            log_file.write(log_entry)
+        # Save CSV log
+        log_file_csv = "usage_log.csv"
+        file_exists = os.path.isfile(log_file_csv)
+        with open(log_file_csv, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
+            writer.writerow([upload_time, user_name, user_email, file_name, query, response])
 
-        # Show result
-        st.success(response)
-
-
+        # Save plain text log (in repo folder)
+        log_file_txt = "usage_log.txt"
+        with open(log_file_txt, "a", encoding="utf-8") as f:
+            f.write(f"Time: {upload_time}\n")
+            f.write(f"User Name: {user_name}\n")
+            f.write(f"Email: {user_email}\n")
+            f.write(f"File Name: {file_name}\n")
+            f.write(f"Query: {query}\n")
+            f.write(f"Response: {response}\n")
+            f.write("-" * 50 + "\n")
