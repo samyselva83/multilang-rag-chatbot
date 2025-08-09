@@ -3,59 +3,67 @@ import streamlit as st
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
 import tempfile
+import csv
 from datetime import datetime
 
-# Setup logging folder and file
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-#st.write(f"Logs directory is: {LOG_DIR}")
-LOG_FILE_PATH = os.path.join(LOG_DIR, "user_logs.txt")
+# Set Groq API key
+os.environ["GROQ_API_KEY"] = st.secrets["groq"]["GROQ_API_KEY"]
 
-def log_interaction(user, email, filename, query, response):
-    with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
-        f.write(f"{datetime.now()} | User: {user} | Email: {email} | File: {filename}\n")
-        f.write(f"Query: {query}\nResponse: {response}\n{'-'*40}\n")
-
+st.set_page_config(page_title="📄 Multilingual RAG Chatbot (Groq)")
 st.title("📄 Multilingual RAG Chatbot")
 
-user_name = st.text_input("Your Name")
-user_email = st.text_input("Your Email")
+# Sidebar user info
+st.sidebar.header("🔐 User Login")
+user_name = st.sidebar.text_input("Your Name")
+user_email = st.sidebar.text_input("Email")
 
 if not user_name or not user_email:
     st.warning("Please enter your name and email.")
     st.stop()
 
-uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
+# File upload
+uploaded_file = st.file_uploader("📎 Upload PDF", type=["pdf"])
 
 if uploaded_file:
+    upload_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_name = uploaded_file.name
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
 
+    # Load and split
     loader = PyMuPDFLoader(pdf_path)
     documents = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_documents(documents)
 
+    st.success(f"📄 {file_name} loaded and processed successfully with {len(chunks)} chunks.")
+
+    # Embeddings (free & local from HuggingFace)
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    db = FAISS.from_documents(chunks, embeddings)
 
-    # Using Groq LLM with your API key from secrets
-    llm = ChatGroq(groq_api_key=st.secrets["groq"]["GROQ_API_KEY"], model_name="llama-3.3-70b-versatile", temperature=0)
-    qa = RetrievalQA.from_chain_type(llm=llm, retriever=vectorstore.as_retriever())
+    # LLM (Groq)
+    llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
+    qa = RetrievalQA.from_chain_type(llm=llm, retriever=db.as_retriever())
 
-    query = st.text_input("Ask your question:")
+    # Query input and submit button
+    query = st.text_input("💬 Ask your question (any language):")
 
-    if query:
+    if st.button("Submit Query") and query.strip() != "":
         response = qa.run(query)
         st.markdown(f"**Answer:** {response}")
 
-        log_interaction(user_name, user_email, uploaded_file.name, query, response)
-
-
-
+        # Save log
+        log_file = "usage_log.csv"
+        file_exists = os.path.isfile(log_file)
+        with open(log_file, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
+            writer.writerow([upload_time, user_name, user_email, file_name, query, response])
