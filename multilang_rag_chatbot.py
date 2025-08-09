@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import requests
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
@@ -20,6 +21,12 @@ st.title("📄 Multilingual RAG Chatbot with Groq")
 st.sidebar.header("🔐 User Login")
 user_name = st.sidebar.text_input("Your Name")
 user_email = st.sidebar.text_input("Email")
+
+# Try to get public IP
+try:
+    user_ip = requests.get("https://api.ipify.org", timeout=3).text
+except:
+    user_ip = "Unknown"
 
 if not user_name or not user_email:
     st.warning("Please enter your name and email.")
@@ -42,8 +49,10 @@ if uploaded_file:
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_documents(documents)
 
-    # Embeddings (free & local from HuggingFace)
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    # Embeddings (HuggingFace multilingual)
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
     db = FAISS.from_documents(chunks, embeddings)
 
     # LLM (Groq)
@@ -63,7 +72,7 @@ if uploaded_file:
         with open(log_file, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             if not file_exists:
-                writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
-            writer.writerow([upload_time, user_name, user_email, file_name, query, response])
+                writer.writerow(["Time", "User Name", "Email", "IP Address", "File Name", "Query", "Response"])
+            writer.writerow([upload_time, user_name, user_email, user_ip, file_name, query, response])
 
-
+        st.info("✅ Your query has been logged securely.")
