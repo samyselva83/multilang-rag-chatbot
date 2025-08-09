@@ -1,5 +1,7 @@
 streamlit
 langchain
+langchain-community
 faiss-cpu
 PyMuPDF
-openai
+langchain_groq
+sentence-transformers
