@@ -48,7 +48,7 @@ if st.button("Submit Query"):
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
         # Groq LLM for answering
-        llm = ChatGroq(groq_api_key=GROQ_API_KEY, model_name="mixtral-8x7b-32768")
+        llm = ChatGroq(groq_api_key=GROQ_API_KEY, model_name="llama-3.3-70b-versatile")
         qa = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
 
         response = qa.run(query)
@@ -63,4 +63,5 @@ if st.button("Submit Query"):
 
         # Show result
         st.success(response)
+
 
