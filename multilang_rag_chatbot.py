@@ -1,78 +1,85 @@
-import os
 import streamlit as st
-import requests
-from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_community.chat_models import ChatGroq
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
+from langchain.document_loaders import PyMuPDFLoader
 from langchain.chains import RetrievalQA
-import tempfile
-import csv
 from datetime import datetime
+import os
 
-# Set Groq API key
-os.environ["GROQ_API_KEY"] = st.secrets["groq"]["GROQ_API_KEY"]
+# -------------------
+# API Key (from Streamlit Secrets)
+# -------------------
+groq_api_key = st.secrets["groq"]["GROQ_API_KEY"]
 
-st.set_page_config(page_title="📄 Multilingual RAG Chatbot (Groq)")
-st.title("📄 Multilingual RAG Chatbot with Groq")
+# -------------------
+# Streamlit UI
+# -------------------
+st.set_page_config(page_title="Multilingual RAG Chatbot", layout="wide")
+st.title("🌐 Multilingual RAG Chatbot (GROQ)")
 
-# Sidebar user info
-st.sidebar.header("🔐 User Login")
-user_name = st.sidebar.text_input("Your Name")
-user_email = st.sidebar.text_input("Email")
+st.sidebar.header("Upload and Settings")
+uploaded_file = st.sidebar.file_uploader("Upload a PDF", type=["pdf"])
+language = st.sidebar.text_input("Language (e.g., en, fr, de, hi)", value="en")
+query = st.text_area("Ask a question based on the document:")
 
-# Try to get public IP
-try:
-    user_ip = requests.get("https://api.ipify.org", timeout=3).text
-except:
-    user_ip = "Unknown"
+# -------------------
+# Logging setup
+# -------------------
+LOG_FILE = "usage_log.txt"
 
-if not user_name or not user_email:
-    st.warning("Please enter your name and email.")
-    st.stop()
+def log_usage(user_question, bot_answer):
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now()}] Q: {user_question}\nA: {bot_answer}\n{'-'*50}\n")
 
-# File upload
-uploaded_file = st.file_uploader("📎 Upload PDF", type=["pdf"])
-
+# -------------------
+# Document Processing
+# -------------------
 if uploaded_file:
-    upload_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    file_name = uploaded_file.name
+    with open("temp.pdf", "wb") as f:
+        f.write(uploaded_file.read())
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(uploaded_file.read())
-        pdf_path = tmp.name
+    loader = PyMuPDFLoader("temp.pdf")
+    docs = loader.load()
 
-    # Load and split
-    loader = PyMuPDFLoader(pdf_path)
-    documents = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_documents(documents)
+    chunks = splitter.split_documents(docs)
 
-    # Embeddings (HuggingFace multilingual)
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    embeddings = HuggingFaceEmbeddings()
+    vectorstore = FAISS.from_documents(chunks, embeddings)
+
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+    # -------------------
+    # LLM with GROQ
+    # -------------------
+    llm = ChatGroq(
+        groq_api_key=groq_api_key,
+        model_name="mixtral-8x7b-32768",
+        temperature=0
     )
-    db = FAISS.from_documents(chunks, embeddings)
 
-    # LLM (Groq)
-    llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
-    qa = RetrievalQA.from_chain_type(llm=llm, retriever=db.as_retriever())
+    qa = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=retriever,
+        return_source_documents=True
+    )
 
-    st.success(f"📄 {file_name} loaded. Ask your question!")
+    if st.button("Get Answer"):
+        if query.strip():
+            result = qa.invoke({"query": query})
+            answer = result["result"]
+            st.write("**Answer:**", answer)
 
-    query = st.text_input("💬 Ask your question (any language):")
-    if query:
-        response = qa.run(query)
-        st.markdown(f"**Answer:** {response}")
+            # Show source documents (optional)
+            with st.expander("Source Chunks"):
+                for i, doc in enumerate(result["source_documents"]):
+                    st.markdown(f"**Source {i+1}:** {doc.page_content[:200]}...")
 
-        # Save log
-        log_file = "usage_log.csv"
-        file_exists = os.path.isfile(log_file)
-        with open(log_file, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(["Time", "User Name", "Email", "IP Address", "File Name", "Query", "Response"])
-            writer.writerow([upload_time, user_name, user_email, user_ip, file_name, query, response])
-
-        st.info("✅ Your query has been logged securely.")
+            # Log usage
+            log_usage(query, answer)
+        else:
+            st.warning("Please enter a question.")
+else:
+    st.info("Upload a PDF to start.")
