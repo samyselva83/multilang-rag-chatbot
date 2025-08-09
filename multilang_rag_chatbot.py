@@ -16,7 +16,8 @@ os.environ["GROQ_API_KEY"] = st.secrets["groq"]["GROQ_API_KEY"]
 
 st.set_page_config(page_title="📄 Multi Language RAG Chatbot")
 st.title("📄 AskDocs AI")
-st.markdown(" - by Selvakumar")
+st.header(" Multi-Language RAG AI Chatbot")
+st.markdown(" by Selvakumar")
 
 # Sidebar user info
 st.sidebar.header("🔐 User Login")
@@ -89,6 +90,7 @@ if uploaded_file:
                 writer.writerow([st.session_state.upload_time, user_name, user_email, st.session_state.file_name, query, response])
         else:
             st.error("Please upload and process a PDF first.")
+
 
 
 
