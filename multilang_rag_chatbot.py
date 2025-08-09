@@ -11,7 +11,7 @@ import csv
 from datetime import datetime
 
 # Set Groq API key
-os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+os.environ["GROQ_API_KEY"] = st.secrets["groq"]["GROQ_API_KEY"]
 
 st.set_page_config(page_title="📄 Multilingual RAG Chatbot (Groq)")
 st.title("📄 Multilingual RAG Chatbot with Groq")
@@ -65,4 +65,5 @@ if uploaded_file:
             if not file_exists:
                 writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
             writer.writerow([upload_time, user_name, user_email, file_name, query, response])
+
 
