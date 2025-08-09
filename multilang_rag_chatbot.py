@@ -1,78 +1,84 @@
 import os
-import streamlit as st
+from datetime import datetime
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
-from langchain.chains import RetrievalQA
-import tempfile
-import csv
-from datetime import datetime
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.chains import ConversationalRetrievalChain
+from langchain.llms import HuggingFaceHub
+from langchain.memory import ConversationBufferMemory
 
-# Set Groq API key
-os.environ["GROQ_API_KEY"] = st.secrets["groq"]["GROQ_API_KEY"]
+# ==========================
+# Setup Logging
+# ==========================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE_PATH = os.path.join(LOG_DIR, "user_logs.txt")
 
-st.set_page_config(page_title="📄 Multilingual RAG Chatbot (Groq)")
-st.title("📄 Multilingual RAG Chatbot with Groq")
+def log_interaction(user_input, bot_response):
+    """Append conversation logs with timestamps."""
+    with open(LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
+        log_file.write(f"{datetime.now()} - USER: {user_input}\n")
+        log_file.write(f"{datetime.now()} - BOT: {bot_response}\n\n")
 
-# Sidebar user info
-st.sidebar.header("🔐 User Login")
-user_name = st.sidebar.text_input("Your Name")
-user_email = st.sidebar.text_input("Email")
-
-if not user_name or not user_email:
-    st.warning("Please enter your name and email.")
-    st.stop()
-
-# File upload
-uploaded_file = st.file_uploader("📎 Upload PDF", type=["pdf"])
-
-if uploaded_file:
-    upload_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    file_name = uploaded_file.name
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(uploaded_file.read())
-        pdf_path = tmp.name
-
-    # Load and split
+# ==========================
+# Load Documents
+# ==========================
+def load_documents(pdf_path):
     loader = PyMuPDFLoader(pdf_path)
-    documents = loader.load()
+    return loader.load()
+
+# ==========================
+# Split Documents
+# ==========================
+def split_documents(documents):
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_documents(documents)
+    return splitter.split_documents(documents)
 
-    # Embeddings (free & local from HuggingFace)
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-    db = FAISS.from_documents(chunks, embeddings)
+# ==========================
+# Build Vector Store
+# ==========================
+def build_vector_store(chunks):
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return FAISS.from_documents(chunks, embeddings)
 
-    # LLM (Groq)
-    llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
-    qa = RetrievalQA.from_chain_type(llm=llm, retriever=db.as_retriever())
+# ==========================
+# Create Conversational Chain
+# ==========================
+def create_chatbot(vector_store):
+    llm = HuggingFaceHub(repo_id="google/flan-t5-large", model_kwargs={"temperature": 0.3, "max_length": 512})
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    return ConversationalRetrievalChain.from_llm(llm, vector_store.as_retriever(), memory=memory)
 
-    st.success(f"📄 {file_name} loaded. Ask your question!")
+# ==========================
+# Main
+# ==========================
+if __name__ == "__main__":
+    pdf_file = "sample.pdf"  # Change to your PDF path
 
-    query = st.text_input("💬 Ask your question (any language):")
-    if query:
-        response = qa.run(query)
-        st.markdown(f"**Answer:** {response}")
+    print("Loading documents...")
+    docs = load_documents(pdf_file)
 
-        # Save CSV log
-        log_file_csv = "usage_log.csv"
-        file_exists = os.path.isfile(log_file_csv)
-        with open(log_file_csv, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
-            writer.writerow([upload_time, user_name, user_email, file_name, query, response])
+    print("Splitting documents...")
+    chunks = split_documents(docs)
 
-        # Save plain text log (in repo folder)
-        log_file_txt = "usage_log.txt"
-        with open(log_file_txt, "a", encoding="utf-8") as f:
-            f.write(f"Time: {upload_time}\n")
-            f.write(f"User Name: {user_name}\n")
-            f.write(f"Email: {user_email}\n")
-            f.write(f"File Name: {file_name}\n")
-            f.write(f"Query: {query}\n")
-            f.write(f"Response: {response}\n")
-            f.write("-" * 50 + "\n")
+    print("Building vector store...")
+    vector_store = build_vector_store(chunks)
+
+    print("Creating chatbot...")
+    chatbot = create_chatbot(vector_store)
+
+    print("\nChatbot is ready! Type 'exit' to quit.\n")
+
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() in ["exit", "quit"]:
+            print("Goodbye!")
+            break
+
+        response = chatbot({"question": user_input})
+        bot_reply = response["answer"]
+
+        print(f"Bot: {bot_reply}")
+        log_interaction(user_input, bot_reply)
