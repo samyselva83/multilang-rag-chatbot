@@ -1,84 +1,57 @@
 import os
-from datetime import datetime
+import streamlit as st
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.chains import ConversationalRetrievalChain
-from langchain.llms import HuggingFaceHub
-from langchain.memory import ConversationBufferMemory
+from langchain_groq import ChatGroq
+from langchain.chains import RetrievalQA
+import tempfile
+from datetime import datetime
 
-# ==========================
-# Setup Logging
-# ==========================
+# Setup logging folder and file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE_PATH = os.path.join(LOG_DIR, "user_logs.txt")
 
-def log_interaction(user_input, bot_response):
-    """Append conversation logs with timestamps."""
-    with open(LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
-        log_file.write(f"{datetime.now()} - USER: {user_input}\n")
-        log_file.write(f"{datetime.now()} - BOT: {bot_response}\n\n")
+def log_interaction(user, email, filename, query, response):
+    with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now()} | User: {user} | Email: {email} | File: {filename}\n")
+        f.write(f"Query: {query}\nResponse: {response}\n{'-'*40}\n")
 
-# ==========================
-# Load Documents
-# ==========================
-def load_documents(pdf_path):
+st.title("📄 Multilingual RAG Chatbot")
+
+user_name = st.text_input("Your Name")
+user_email = st.text_input("Your Email")
+
+if not user_name or not user_email:
+    st.warning("Please enter your name and email.")
+    st.stop()
+
+uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
+
+if uploaded_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(uploaded_file.read())
+        pdf_path = tmp.name
+
     loader = PyMuPDFLoader(pdf_path)
-    return loader.load()
-
-# ==========================
-# Split Documents
-# ==========================
-def split_documents(documents):
+    documents = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    return splitter.split_documents(documents)
+    chunks = splitter.split_documents(documents)
 
-# ==========================
-# Build Vector Store
-# ==========================
-def build_vector_store(chunks):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    return FAISS.from_documents(chunks, embeddings)
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    vectorstore = FAISS.from_documents(chunks, embeddings)
 
-# ==========================
-# Create Conversational Chain
-# ==========================
-def create_chatbot(vector_store):
-    llm = HuggingFaceHub(repo_id="google/flan-t5-large", model_kwargs={"temperature": 0.3, "max_length": 512})
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    return ConversationalRetrievalChain.from_llm(llm, vector_store.as_retriever(), memory=memory)
+    # Using Groq LLM with your API key from secrets
+    llm = ChatGroq(groq_api_key=st.secrets["groq"]["GROQ_API_KEY"], model_name="llama-3.3-70b-versatile", temperature=0)
+    qa = RetrievalQA.from_chain_type(llm=llm, retriever=vectorstore.as_retriever())
 
-# ==========================
-# Main
-# ==========================
-if __name__ == "__main__":
-    pdf_file = "sample.pdf"  # Change to your PDF path
+    query = st.text_input("Ask your question:")
 
-    print("Loading documents...")
-    docs = load_documents(pdf_file)
+    if query:
+        response = qa.run(query)
+        st.markdown(f"**Answer:** {response}")
 
-    print("Splitting documents...")
-    chunks = split_documents(docs)
-
-    print("Building vector store...")
-    vector_store = build_vector_store(chunks)
-
-    print("Creating chatbot...")
-    chatbot = create_chatbot(vector_store)
-
-    print("\nChatbot is ready! Type 'exit' to quit.\n")
-
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() in ["exit", "quit"]:
-            print("Goodbye!")
-            break
-
-        response = chatbot({"question": user_input})
-        bot_reply = response["answer"]
-
-        print(f"Bot: {bot_reply}")
-        log_interaction(user_input, bot_reply)
+        log_interaction(user_name, user_email, uploaded_file.name, query, response)
