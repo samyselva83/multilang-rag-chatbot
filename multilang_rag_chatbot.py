@@ -42,7 +42,7 @@ if st.button("Submit Query"):
         chunks = splitter.split_documents(docs)
 
         # Use HuggingFace embeddings (no API key needed)
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
         vectorstore = FAISS.from_documents(chunks, embeddings)
 
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
@@ -63,3 +63,4 @@ if st.button("Submit Query"):
 
         # Show result
         st.success(response)
+
