@@ -3,8 +3,7 @@ from langchain_groq import ChatGroq
 from langchain.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-#from langchain.embeddings import OpenAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
 import os
 import datetime
@@ -64,4 +63,5 @@ if st.button("Submit Query"):
 
         # Show result
         st.success(response)
+
 
