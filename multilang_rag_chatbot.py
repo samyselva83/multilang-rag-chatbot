@@ -1,56 +1,60 @@
 import streamlit as st
-import os
-import tempfile
-from langchain_community.chat_models import ChatGroq
-from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_groq import ChatGroq
+from langchain.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
-from datetime import datetime
+import os
+import datetime
 
-# Set page title
-st.set_page_config(page_title="Multi-Language RAG Chatbot", page_icon="🌍")
+# ------------------ SETTINGS ------------------ #
+GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
 
-# User inputs for logging
-user_name = st.text_input("Enter your name")
-user_email = st.text_input("Enter your email")
+# ------------------ STREAMLIT UI ------------------ #
+st.set_page_config(page_title="Multilang RAG Chatbot", layout="wide")
+st.title("🌍 Multilang RAG Chatbot")
 
-# Upload file
+# User info inputs
+user_name = st.text_input("Enter your Name")
+user_email = st.text_input("Enter your Email")
+
+# File upload
 uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
-query = st.text_input("Ask a question about the document")
 
-# Function to log data to a text file
-def log_user_interaction(name, email, file_name, query_text):
-    log_file = "user_interactions.txt"
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(f"{timestamp} | Name: {name} | Email: {email} | File: {file_name} | Query: {query_text}\n")
+# Query input
+query = st.text_area("Ask your question")
 
-# Ensure API key is loaded
-groq_api_key = st.secrets["groq"]["GROQ_API_KEY"]
+if st.button("Submit Query"):
+    if not uploaded_file:
+        st.error("Please upload a PDF file first.")
+    elif not query.strip():
+        st.error("Please enter a query.")
+    else:
+        # ------------------ PDF PROCESSING ------------------ #
+        with open("temp.pdf", "wb") as f:
+            f.write(uploaded_file.read())
 
-if uploaded_file and query and user_name and user_email:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        file_path = tmp_file.name
+        loader = PyMuPDFLoader("temp.pdf")
+        docs = loader.load()
 
-    loader = PyMuPDFLoader(file_path)
-    documents = loader.load()
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = splitter.split_documents(docs)
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    docs = text_splitter.split_documents(documents)
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.from_documents(chunks, embeddings)
 
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-    vectorstore = FAISS.from_documents(docs, embeddings)
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
-    llm = ChatGroq(model="llama3-8b-8192", temperature=0, groq_api_key=groq_api_key)
-    qa = RetrievalQA.from_chain_type(llm=llm, retriever=vectorstore.as_retriever())
+        llm = ChatGroq(groq_api_key=GROQ_API_KEY, model_name="mixtral-8x7b-32768")
+        qa = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
 
-    response = qa.run(query)
+        response = qa.run(query)
 
-    # Log user input and file info
-    log_user_interaction(user_name, user_email, uploaded_file.name, query)
+        # ------------------ LOGGING ------------------ #
+        log_entry = f"{datetime.datetime.now()} | Name: {user_name} | Email: {user_email} | File: {uploaded_file.name} | Query: {query} | Response: {response}\n"
+        with open("user_logs.txt", "a", encoding="utf-8") as log_file:
+            log_file.write(log_entry)
 
-    st.write("### Response:")
-    st.write(response)
+        # Show result
+        st.success(response)
