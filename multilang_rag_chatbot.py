@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-from langchain.document_loaders import PyMuPDFLoader
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -65,3 +65,4 @@ if uploaded_file:
             if not file_exists:
                 writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
             writer.writerow([upload_time, user_name, user_email, file_name, query, response])
+
