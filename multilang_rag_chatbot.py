@@ -42,7 +42,6 @@ if uploaded_file:
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_documents(documents)
 
-    st.success(f"📄 {file_name} loaded and processed successfully with {len(chunks)} chunks.")
 
     # Embeddings (free & local from HuggingFace)
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
@@ -52,6 +51,7 @@ if uploaded_file:
     llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
     qa = RetrievalQA.from_chain_type(llm=llm, retriever=db.as_retriever())
 
+    st.success(f"📄 {file_name} loaded and processed successfully with {len(chunks)} chunks.")
     # Query input and submit button
     query = st.text_input("💬 Ask your question (any language):")
 
@@ -67,3 +67,4 @@ if uploaded_file:
             if not file_exists:
                 writer.writerow(["Time", "User Name", "Email", "File Name", "Query", "Response"])
             writer.writerow([upload_time, user_name, user_email, file_name, query, response])
+
