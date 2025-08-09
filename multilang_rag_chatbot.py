@@ -12,8 +12,8 @@ from datetime import datetime
 # Setup logging folder and file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
-print(LOG_DIR)
 os.makedirs(LOG_DIR, exist_ok=True)
+st.write(f"Logs directory is: {LOG_DIR}")
 LOG_FILE_PATH = os.path.join(LOG_DIR, "user_logs.txt")
 
 def log_interaction(user, email, filename, query, response):
@@ -56,4 +56,5 @@ if uploaded_file:
         st.markdown(f"**Answer:** {response}")
 
         log_interaction(user_name, user_email, uploaded_file.name, query, response)
+
 
