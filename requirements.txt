@@ -1,7 +1,8 @@
 streamlit
 langchain
 langchain-community
-faiss-cpu
-PyMuPDF
-langchain_groq
+langchain-groq
 sentence-transformers
+faiss-cpu
+pymupdf
+requests
