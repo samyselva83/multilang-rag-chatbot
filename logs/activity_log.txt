@@ -1,0 +1,43 @@
+import streamlit as st
+import socket
+import os
+from datetime import datetime
+
+# Ensure log folder exists
+os.makedirs("logs", exist_ok=True)
+log_file = "logs/activity_log.txt"
+
+def log_activity(username, ip_address, file_name, question):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"{timestamp} | User: {username} | IP: {ip_address} | File: {file_name} | Question: {question}\n")
+
+# Get IP address
+def get_ip():
+    try:
+        hostname = socket.gethostname()
+        return socket.gethostbyname(hostname)
+    except:
+        return "Unknown"
+
+st.title("📚 Multi-Language RAG Chatbot with Logging")
+
+# User login
+username = st.text_input("Enter your username:")
+
+# File upload
+uploaded_file = st.file_uploader("Upload PDF file", type=["pdf"])
+if uploaded_file:
+    file_path = os.path.join("data", uploaded_file.name)
+    os.makedirs("data", exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    st.success(f"Uploaded: {uploaded_file.name}")
+
+# Chat input
+question = st.text_input("Ask a question:")
+if question and uploaded_file and username:
+    ip_address = get_ip()
+    log_activity(username, ip_address, uploaded_file.name, question)
+    st.write(f"💬 Question logged for {username}")
+
