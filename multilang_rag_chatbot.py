@@ -25,7 +25,7 @@ user_name = st.sidebar.text_input("Your Name", key="user_name")
 user_email = st.sidebar.text_input("Email", key="user_email")
 
 if not user_name or not user_email:
-    st.warning("Please enter your name and email in the sidebar.")
+    st.warning("Please enter your name and email in the sidebar to get started.")
     st.stop()
 
 uploaded_file = st.file_uploader("📎 Upload PDF", type=["pdf"], key="file_uploader")
@@ -90,6 +90,7 @@ if uploaded_file:
                 writer.writerow([st.session_state.upload_time, user_name, user_email, st.session_state.file_name, query, response])
         else:
             st.error("Please upload and process a PDF first.")
+
 
 
 
